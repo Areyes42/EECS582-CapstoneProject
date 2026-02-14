@@ -1,9 +1,46 @@
 """
-Remove __pycache__ and other Python artifacts from the extension folder.
-Chrome refuses to load extensions with files/dirs starting with _.
+=====================================================================
+Code Artifact:   clean_for_extension.py
+Description:     Utility script to remove __pycache__ and .pytest_cache
+                 directories from the GoPhishFree extension folder.
+                 Chrome Manifest V3 rejects extensions containing
+                 directories whose names start with underscores.
+                 Run this before loading/reloading the extension if
+                 Python scripts have been executed in the project.
 
-Run before loading the extension if you get "Failed to load extension":
+Programmers:     Ty Farrington
+Created:         2026-02-05
+Revised:
+  2026-02-05 — Initial version to fix extension loading errors
+               caused by __pycache__ directories (Ty Farrington)
+
+Preconditions:
+  - Python 3.7+ installed
+  - Script must be located in the extension root directory
+
+Acceptable Input:   None (no arguments required)
+Unacceptable Input: N/A
+
+Postconditions:
+  - All __pycache__ and .pytest_cache directories removed recursively
+  - Extension folder is loadable by Chrome
+
+Return Values:
+  - Exit code 0 on success
+  - Console output listing removed directories
+
+Error Handling:
+  - shutil.rmtree with ignore_errors=True (non-fatal on permission issues)
+
+Side Effects:
+  - Deletes __pycache__ and .pytest_cache directories and their contents
+
+Invariants:     Only directories named __pycache__ or .pytest_cache are removed
+Known Faults:   Script's own execution may create a new __pycache__ (handled)
+
+Usage:
     python clean_for_extension.py
+=====================================================================
 """
 import os
 import shutil

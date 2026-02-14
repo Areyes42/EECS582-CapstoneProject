@@ -1,26 +1,83 @@
 // ═══════════════════════════════════════════════════════════════════
-// GoPhishFree – Background Service Worker
+// Code Artifact:   background.js
+// Description:     Background Service Worker for the GoPhishFree
+//                  Chrome extension (Manifest V3). Handles persistent
+//                  storage management, inter-script messaging, secure
+//                  content fetching for Deep Scan, and AI provider
+//                  adapter routing for BYOK cloud enhancement.
 //
-// Handles persistent storage, inter-script messaging, and secure
-// content fetching for the GoPhishFree Chrome extension.
+// Programmers:     Ty Farrington, Brett Suhr, Andrew Reyes,
+//                  Nicholas Holmes, Kaleb Howard
+// Created:         2025-10-15
+// Revised:
+//   2025-11-20 — Initial storage and messaging setup (Andrew Reyes)
+//   2025-12-15 — Secure fetch for Deep Scan pages (Brett Suhr)
+//   2026-01-10 — Fish collection and stats management (Nicholas Holmes)
+//   2026-02-01 — Unified scan result storage schema (Ty Farrington)
+//   2026-02-08 — AI Provider Adapters (OpenAI, Anthropic, Google,
+//                Azure, Custom) with strict JSON schema enforcement
+//                and prompt injection hardening (Ty Farrington)
 //
-// Responsibilities:
-//   • Manage scan history and fish collection in chrome.storage.local
-//   • Proxy permission requests from content scripts (MV3 restriction)
-//   • Securely fetch external page HTML for Tier 3 Deep Scan
-//   • Provide fish stats and recent catches to the popup
+// Preconditions:
+//   - Must be registered as service_worker in manifest.json
+//   - chrome.storage.local and chrome.runtime APIs must be available
+//   - For AI features: user must have configured API key in storage
+//
+// Acceptable Input:
+//   - chrome.runtime.onMessage messages with action types:
+//     "saveScanResult", "getScanHistory", "getFishStats",
+//     "clearHistory", "fetchPageContent", "getRecentCatches",
+//     "runAiAnalysis"
+//   - Scan result objects: { url, riskScore, confidence, reasons, ... }
+//   - AI payload: features-only JSON (no email body/subject/sender)
+//
+// Unacceptable Input:
+//   - Messages without a valid "action" field (ignored)
+//   - fetchPageContent URLs pointing to non-HTTP(S) schemes (rejected)
+//   - AI payloads containing raw email text (never constructed)
+//
+// Postconditions:
+//   - Scan results persisted in chrome.storage.local
+//   - Fish collection updated with new catches
+//   - AI responses validated against strict JSON schema
+//
+// Return Values:
+//   - Each message handler sends a response via sendResponse()
+//   - AI analysis returns: { aiRiskScore, riskTier, phishType,
+//     topSignals, confidence, notes } or error object
+//
+// Error Handling:
+//   - fetch() failures: caught, return { error: message }
+//   - AI API errors: caught, return { error: "AI unavailable" }
+//   - Invalid AI JSON: rejected, return { error: "Invalid response" }
+//   - Storage quota exceeded: logged, graceful degradation
+//
+// Side Effects:
+//   - Reads/writes chrome.storage.local (scan history, fish, settings)
+//   - Makes network requests for Deep Scan (credentialless fetch)
+//   - Makes network requests to AI provider APIs when BYOK enabled
+//
+// Invariants:
+//   - API keys stored only in chrome.storage.local (never synced)
+//   - AI system prompt always enforces no-tools, no-browsing rules
+//   - Page fetches always omit credentials and cap at 2 MB
+//
+// Known Faults:
+//   - Service worker may be terminated by Chrome after idle period
+//   - Storage has 10 MB limit; old scan history not auto-pruned
 // ═══════════════════════════════════════════════════════════════════
 
-// ───────────────────── AI Provider Adapters ─────────────────────
-//
+// ================================================================
+// BLOCK: AI Provider Adapters
 // Each adapter transforms the features-only payload into the
-// provider's API format and returns the parsed JSON response.
-// All adapters enforce:
-//   - No tools, no browsing, no link visiting
-//   - Strict JSON output schema
-//   - System prompt injection hardening
-//
-// Supported: OpenAI, Anthropic, Google Gemini, Azure OpenAI, Custom
+// provider's specific API format and returns the parsed JSON
+// response. All adapters enforce:
+//   - System prompt with no-tools, no-browsing, no-link rules
+//   - Strict JSON output schema validation
+//   - Prompt injection hardening (no raw email text sent)
+// Supported providers: OpenAI, Anthropic, Google Gemini,
+// Azure OpenAI, Custom (any OpenAI-compatible endpoint)
+// ================================================================
 
 const AI_SYSTEM_PROMPT = `You are a phishing email risk analyst. You will receive ONLY extracted signal features from an email — never the email body, subject, or sender address.
 
@@ -291,7 +348,11 @@ function validateAiResponse(result) {
   };
 }
 
-// ───────────────────── Risk Classification ─────────────────────
+// ================================================================
+// BLOCK: Risk Classification
+// Maps numeric risk scores (0-100) to themed fish type keys used
+// for the gamified fish tank collection system.
+// ================================================================
 
 /**
  * Map a numeric risk score to a fish type key.
@@ -308,7 +369,12 @@ function getFishTypeFromRisk(riskScore) {
   return 'friendly';
 }
 
-// ───────────────────── Extension Install ───────────────────────
+// ================================================================
+// BLOCK: Extension Install Handler
+// Initializes default storage values when the extension is first
+// installed or updated. Sets up scan history, fish collection,
+// scanning preferences, and AI configuration defaults.
+// ================================================================
 
 /**
  * Initialise default storage values when the extension is first
@@ -337,7 +403,15 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// ───────────────────── Message Router ──────────────────────────
+// ================================================================
+// BLOCK: Message Router
+// Central message handler for chrome.runtime.onMessage. Routes
+// messages from content scripts and popup to the appropriate
+// handler based on the "action" field. Supported actions:
+//   saveScanResult, getScanHistory, getFishStats, getRecentCatches,
+//   clearHistory, fetchPageContent, runAiAnalysis
+// Returns true from the listener to enable async sendResponse.
+// ================================================================
 
 /**
  * Central message handler. Content script and popup communicate

@@ -1,18 +1,42 @@
 <!DOCTYPE html>
 <!--
-  GoPhishFree – Fish Tank Dashboard (popup.html)
+  ===================================================================
+  Code Artifact:   popup.html
+  Description:     Fish Tank Dashboard UI for the GoPhishFree Chrome
+                   extension. This is the popup shown when clicking
+                   the toolbar icon. Provides the gamified aquarium
+                   interface, fish collection, recent catches, scan
+                   statistics, settings (Enhanced Scanning, AI
+                   Enhancement BYOK), and Trusted Domains Manager.
 
-  This is the extension popup UI shown when clicking the toolbar icon.
-  Contains:
-    • Header with logomini.png icon, title, and stat pills (with hover tooltips)
-    • Animated fish tank with SVG decorations (sand, seaweed, coral, etc.)
-    • Fish collection panel (4 types with locked/unlocked states)
-    • Recent catches list with clickable items
-    • Enhanced Scanning settings toggle
-    • Fish tooltip overlay
+  Programmers:     Ty Farrington, Brett Suhr, Andrew Reyes,
+                   Nicholas Holmes, Kaleb Howard
+  Created:         2025-11-01
+  Revised:
+    2025-11-20 — Initial popup layout and styles (Nicholas Holmes)
+    2025-12-10 — Fish tank SVG decorations (Nicholas Holmes)
+    2026-01-05 — Collection panel and catches list (Kaleb Howard)
+    2026-01-15 — Enhanced Scanning settings toggle (Brett Suhr)
+    2026-02-01 — Embedded styles for popup performance (Ty Farrington)
+    2026-02-05 — Trusted Domains Manager section with add/remove UI
+                 (Ty Farrington)
+    2026-02-08 — AI Enhancement toggle and Configure AI modal
+                 (Ty Farrington, Kaleb Howard)
 
-  Styles are embedded for popup performance (single file load).
-  Fish animation logic lives in popup.js.
+  Preconditions:
+    - Must be declared as default_popup in manifest.json
+    - popup.js must be loaded (referenced via <script> tag)
+    - Assets/logomini.png must exist for header icon
+    - Google Fonts (Fredoka One, Quicksand) loaded via CDN
+
+  Postconditions:
+    - Popup renders with fish tank, collection, settings, and catches
+    - All interactive elements are wired to popup.js event handlers
+
+  Known Faults:
+    - Popup width is fixed at 400px; not responsive to smaller windows
+    - Google Fonts CDN dependency may fail offline (fallback sans-serif)
+  ===================================================================
 -->
 <html lang="en">
 <head>

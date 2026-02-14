@@ -1,23 +1,81 @@
 """
-GoPhishFree - Unified ML Model Training Script
+=====================================================================
+Code Artifact:   train_model.py
+Description:     Unified ML Model Training Script for GoPhishFree.
+                 Trains ONE Random Forest classifier on a unified
+                 64-feature schema covering all detection tiers
+                 (email/URL, DNS, deep scan, BEC/linkless, attachments)
+                 plus context flags. The model is calibrated via
+                 isotonic regression (CalibratedClassifierCV) so that
+                     riskScore = round(100 * calibrated_probability)
+                 produces well-calibrated risk scores.
 
-Trains ONE Random Forest classifier on a unified 64-feature schema that
-covers all tiers (email, DNS, deep scan, BEC/linkless, attachments) plus
-context flags. Features from tiers that have not run are default-filled
-with 0 and the model learns to score emails with or without those tiers
-via dns_ran / deep_scan_ran context flags.
+Programmers:     Ty Farrington, Brett Suhr, Andrew Reyes,
+                 Nicholas Holmes, Kaleb Howard
+Created:         2025-10-20
+Revised:
+  2025-11-01 — Initial Random Forest training on Kaggle dataset
+               (Andrew Reyes)
+  2025-12-01 — Added feature importance analysis and evaluation
+               (Ty Farrington)
+  2026-01-15 — Unified 64-feature schema with tier context flags
+               (Ty Farrington)
+  2026-01-25 — Scan-scenario data augmentation (base, DNS, full)
+               (Ty Farrington)
+  2026-02-01 — CalibratedClassifierCV with isotonic regression
+               (Ty Farrington)
+  2026-02-05 — Synthetic data generation for BEC phishing, attachment
+               phishing, legitimate newsletters, and transactional
+               emails (~36k total samples) (Ty Farrington)
+  2026-02-05 — JSON export with isotonic calibration lookup table
+               for in-browser inference (Ty Farrington)
 
-The model's output probability is calibrated (isotonic regression) so that
-    riskScore = round(100 * calibrated_probability)
-replaces the old  prob*80 + rule_points + dns_points  formula.
+Preconditions:
+  - Python 3.7+ with pandas, numpy, scikit-learn, joblib installed
+  - Phishing_Dataset/Phishing_Legitimate_full.csv must exist
+  - Sufficient disk space for model output (~10-50 MB)
 
-Usage:
-    python train_model.py
+Acceptable Input:
+  - CSV file with columns matching URL_EMAIL_FEATURES + 'CLASS' label
+  - CLASS column: 0 = legitimate, 1 = phishing
+  - Numeric feature values (NaN allowed, will be imputed to 0)
 
-Outputs:
-    model/model_unified.json      - Unified model for JS inference
-    model/feature_names.json      - Ordered feature list (64 features)
-    model/*.pkl                   - Sklearn artifacts for retraining
+Unacceptable Input:
+  - Non-CSV files or missing CLASS column (will raise KeyError)
+  - Non-numeric feature columns (will cause sklearn errors)
+
+Postconditions:
+  - model/model_unified.json created with full forest structure,
+    scaler parameters, and isotonic calibration lookup table
+  - model/feature_names.json created with ordered 64-feature list
+  - model/*.pkl created for sklearn-compatible retraining
+  - Training metrics printed to console
+
+Return Values:
+  - Exit code 0 on success
+  - Console output: accuracy, classification report, confusion matrix
+
+Error Handling:
+  - Missing dataset file: FileNotFoundError with descriptive message
+  - Missing feature columns: filled with 0 (not an error)
+  - JSON serialization: numpy types converted to Python native types
+
+Side Effects:
+  - Creates/overwrites files in model/ directory
+  - May create __pycache__ directory (auto-cleaned after execution)
+  - Prints training progress and evaluation metrics to stdout
+
+Invariants:
+  - UNIFIED_FEATURES list is always exactly 64 elements
+  - Feature order matches buildUnifiedVector() in featureExtractor.js
+  - Calibration ensures probabilities are monotonically increasing
+
+Known Faults:
+  - Synthetic data uses simplified distributions; may not capture
+    all real-world phishing patterns
+  - Model performance degrades on email types underrepresented in
+    training data (e.g., spear phishing with perfect grammar)
+=====================================================================
 """
 import pandas as pd
 import numpy as np
@@ -103,7 +161,16 @@ UNIFIED_FEATURES = (
 assert len(UNIFIED_FEATURES) == 64, f"Expected 64 features, got {len(UNIFIED_FEATURES)}"
 
 
-# ========================== data preparation ==========================
+# ======================================================================
+# BLOCK: Data Preparation
+# Loads the Kaggle phishing dataset, maps existing CSV columns to the
+# unified 64-feature schema, default-fills missing feature groups with
+# zeros, generates scan-scenario variants (base, DNS-augmented, full),
+# and creates synthetic samples for BEC phishing, attachment phishing,
+# legitimate newsletters, and transactional emails to address class
+# imbalance and teach the model about phishing types not represented
+# in the original URL-centric Kaggle dataset.
+# ======================================================================
 
 def load_and_prepare_unified_data(csv_path):
     """
@@ -388,7 +455,15 @@ def load_and_prepare_unified_data(csv_path):
     return X, y
 
 
-# ========================== training ==================================
+# ======================================================================
+# BLOCK: Model Training
+# Trains a RandomForestClassifier with 200 estimators and wraps it in
+# CalibratedClassifierCV with isotonic regression (5-fold CV) to
+# produce well-calibrated probability outputs. The calibration step
+# ensures that a predicted probability of 0.7 means approximately 70%
+# likelihood of phishing. Cross-validation scores, classification
+# report, and confusion matrix are printed for evaluation.
+# ======================================================================
 
 def train_unified_model(X, y):
     """
@@ -455,7 +530,13 @@ def train_unified_model(X, y):
     return calibrated, rf, scaler, cal_test
 
 
-# ========================== calibration export ========================
+# ======================================================================
+# BLOCK: Calibration Table Export
+# Extracts the isotonic calibration lookup table from the trained
+# CalibratedClassifierCV model. The table maps raw RF probabilities to
+# calibrated probabilities via piecewise-linear interpolation. This
+# table is exported to JSON for use in the browser-side inference engine.
+# ======================================================================
 
 def build_calibration_table(calibrated_model, rf, scaler, X, n_points=200):
     """
@@ -490,7 +571,17 @@ def build_calibration_table(calibrated_model, rf, scaler, X, n_points=200):
     return x_raw.tolist(), y_cal
 
 
-# ========================== export ====================================
+# ======================================================================
+# BLOCK: Model Export
+# Exports the trained model in two formats:
+#   1. Pickle files (.pkl) for sklearn-compatible retraining/evaluation
+#   2. JSON file (model_unified.json) for in-browser inference containing:
+#      - All 200 decision tree structures (nodes, thresholds, children)
+#      - StandardScaler mean/scale arrays for Z-score normalization
+#      - Isotonic calibration x/y lookup table
+#      - Feature names list for validation
+# The JSON format is designed for efficient traversal in JavaScript.
+# ======================================================================
 
 def export_unified_model(calibrated, rf, scaler, feature_names, output_dir='model'):
     """Export the unified model with calibration table for JS inference."""
@@ -560,7 +651,14 @@ def export_unified_json(rf, scaler, feature_names, cal_x, cal_y, output_path):
     print(f"  {os.path.basename(output_path)}: {size_mb:.1f} MB  ({len(trees)} trees, {len(feature_names)} features)")
 
 
-# ========================== per-type evaluation =======================
+# ======================================================================
+# BLOCK: Per-Type Evaluation
+# Evaluates the trained model's performance on specific phishing types
+# by creating synthetic test samples for each category (URL-credential,
+# BEC-linkless, attachment-led, deep scan impersonation) and measuring
+# detection rate. Also evaluates against legitimate newsletters and
+# transactional emails to check false positive rates.
+# ======================================================================
 
 def evaluate_by_type(calibrated, scaler, X_test, y_test):
     """
@@ -632,7 +730,12 @@ def evaluate_by_type(calibrated, scaler, X_test, y_test):
             print(f"    All {label} - {correct}/{n_samples} correct ({correct/n_samples:.1%})")
 
 
-# ========================== main ======================================
+# ======================================================================
+# BLOCK: Main Execution
+# Orchestrates the full training pipeline: load data, prepare unified
+# features, train model with calibration, export to JSON and pkl,
+# run per-type evaluation, and clean up __pycache__ directories.
+# ======================================================================
 
 def main():
     csv_path = 'Phishing_Dataset/Phishing_Legitimate_full.csv'

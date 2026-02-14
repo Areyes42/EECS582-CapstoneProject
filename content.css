@@ -1,13 +1,42 @@
 /* ═══════════════════════════════════════════════════════════════════
-   GoPhishFree – Content Script Styles
-   
-   Styles injected into the Gmail page for:
-     • Risk badges (low / medium / high / dangerous)
-     • Loading badges and deep-scan loading state
-     • Fish-caught celebration animation
-     • Analysis side panel (header, score, reasons, links)
-     • Deep Scan progress / results section
-     • Report Phish button and severity selection modal
+   Code Artifact:   content.css
+   Description:     Styles injected into Gmail pages by the GoPhishFree
+                    Chrome extension content script. Provides visual
+                    styling for all UI elements rendered in Gmail:
+                      - Risk badges (low / medium / high / dangerous)
+                      - Loading badges and deep-scan loading state
+                      - Fish-caught celebration animation
+                      - Analysis side panel (header, score, reasons)
+                      - Deep Scan progress and results section
+                      - Report Phish button and severity modal
+                      - AI Enhancement result display
+
+   Programmers:     Ty Farrington, Brett Suhr, Andrew Reyes,
+                    Nicholas Holmes, Kaleb Howard
+   Created:         2025-11-01
+   Revised:
+     2025-11-20 — Initial badge and panel styles (Nicholas Holmes)
+     2025-12-10 — Deep Scan section and loading animations
+                  (Brett Suhr)
+     2026-01-05 — Fish celebration keyframe animations
+                  (Nicholas Holmes)
+     2026-01-25 — Report Phish modal styling (Kaleb Howard)
+     2026-02-01 — Unified model score display updates
+                  (Ty Farrington)
+     2026-02-08 — AI Enhancement result badge and agreement indicator
+                  (Ty Farrington)
+
+   Preconditions:
+     - Loaded as content_scripts css in manifest.json
+     - Gmail page must be the injection target
+
+   Side Effects:
+     - Modifies visual presentation of Gmail page elements
+     - Adds CSS keyframe animations to the page context
+
+   Known Faults:
+     - Gmail CSS updates may cause style conflicts (z-index wars)
+     - Some styles use !important to override Gmail defaults
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ──────── Risk Badge (email header pill) ──────── */

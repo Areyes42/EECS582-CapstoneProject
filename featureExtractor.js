@@ -1,27 +1,101 @@
 // =====================================================================
-// GoPhishFree - Feature Extraction Module (Unified Schema)
+// Code Artifact:   featureExtractor.js
+// Description:     Feature Extraction Module for GoPhishFree. Contains
+//                  three classes that extract phishing detection signals
+//                  at different analysis tiers:
+//                    FeatureExtractor (Tier 1) — URL/email lexical
+//                      features, custom rules, BEC/linkless signals,
+//                      and attachment metadata
+//                    DnsChecker (Tier 2) — DNS-over-HTTPS validation
+//                      via Cloudflare/Google resolvers
+//                    PageAnalyzer (Tier 3) — HTML page structure
+//                      analysis for linked pages (forms, iframes, etc.)
+//                  All features feed into a single unified 64-feature
+//                  vector via buildUnifiedVector().
 //
-// Three classes for extracting phishing signals at different tiers:
+// Programmers:     Ty Farrington, Brett Suhr, Andrew Reyes,
+//                  Nicholas Holmes, Kaleb Howard
+// Created:         2025-10-20
+// Revised:
+//   2025-11-15 — Initial URL feature extraction (Andrew Reyes)
+//   2025-12-01 — DnsChecker with Cloudflare DoH (Brett Suhr)
+//   2025-12-20 — PageAnalyzer for Deep Scan (Brett Suhr)
+//   2026-01-10 — Custom rules: urgency, credential, header mismatch
+//                (Ty Farrington)
+//   2026-01-25 — BEC/linkless features: financial request, authority
+//                impersonation, phone callback, reply-to mismatch
+//                (Ty Farrington)
+//   2026-02-01 — Attachment features: risky extensions, double
+//                extensions, filename entropy (Ty Farrington)
+//   2026-02-01 — Unified 64-feature buildUnifiedVector() that
+//                combines all tiers with context flags
+//                (Ty Farrington)
 //
-//   FeatureExtractor  (Tier 1)  - URL/email features + BEC/attachment
-//   DnsChecker        (Tier 2)  - DNS-over-HTTPS features
-//   PageAnalyzer      (Tier 3)  - Page structure features from HTML
+// Preconditions:
+//   - Must be loaded before content.js (declared in manifest.json)
+//   - Gmail DOM must be accessible for email data extraction
+//   - For Tier 2: network access to Cloudflare/Google DoH endpoints
+//   - For Tier 3: HTML content fetched by background.js
 //
-// All features feed into ONE unified model (64 features total).
-// When a tier hasn't run, its features are default-filled with 0 and
-// context flags (dns_ran, deep_scan_ran) tell the model what's missing.
+// Acceptable Input:
+//   - FeatureExtractor: URL strings, email data objects { sender,
+//     links[], text, attachmentNames[] }
+//   - DnsChecker: domain name strings
+//   - PageAnalyzer: HTML Document objects and page URL strings
 //
-// Feature order in buildUnifiedVector() MUST match UNIFIED_FEATURES
-// in train_model.py.
+// Unacceptable Input:
+//   - null/undefined URLs (return default feature objects)
+//   - Non-string domain names for DnsChecker (returns empty results)
+//   - Non-Document objects for PageAnalyzer (returns defaults)
+//
+// Postconditions:
+//   - Feature objects returned with all expected keys populated
+//   - buildUnifiedVector() returns exactly 64-element number array
+//   - DNS results cached with 10-minute TTL
+//
+// Return Values:
+//   - extractURLFeatures(url): Object with 25 URL feature keys
+//   - extractEmailFeatures(data): Object with email-level features
+//   - checkDomain(domain): Promise<Object> with DNS feature keys
+//   - extractFeatures(doc, url): Object with 13 page features
+//   - buildUnifiedVector(...): number[64] matching UNIFIED_FEATURES
+//
+// Error Handling:
+//   - URL parsing errors: caught, returns default (0) features
+//   - DNS query timeouts (4s): caught, returns defaults
+//   - Page analysis errors: caught per-feature, partial results OK
+//   - Shannon entropy: handles empty strings gracefully
+//
+// Side Effects:
+//   - DnsChecker maintains an in-memory cache (Map) for DNS results
+//   - DNS queries are sent to Cloudflare (1.1.1.1) or Google (8.8.8.8)
+//   - No DOM modifications; no storage writes
+//
+// Invariants:
+//   - buildUnifiedVector() always returns exactly 64 numbers
+//   - Feature order must match UNIFIED_FEATURES in train_model.py
+//   - All feature values are finite numbers (NaN replaced with 0)
+//   - DNS cache entries expire after CACHE_TTL (10 minutes)
+//
+// Known Faults:
+//   - URL parsing relies on browser's URL constructor; malformed
+//     URLs may produce unexpected feature values
+//   - DNS-over-HTTPS may be blocked by corporate firewalls
+//   - PageAnalyzer cannot detect JavaScript-rendered content
 // =====================================================================
 
-// -----------------------------------------------------------------
-// FeatureExtractor - Tier 1 Email/URL + BEC + Attachment Features
-//
-// Extracts 25 URL features, 9 custom-rule features, 5 BEC/linkless
-// features, and 5 attachment features from email content visible in
-// the Gmail DOM. No external requests.
-// -----------------------------------------------------------------
+// ================================================================
+// BLOCK: FeatureExtractor Class — Tier 1 Email/URL + BEC + Attachment
+// Primary feature extraction class. Analyzes email content visible
+// in the Gmail DOM without making any external network requests.
+// Extracts:
+//   - 25 URL/email lexical features (dots, dashes, length, etc.)
+//   - 9 custom rule features (urgency, credentials, header mismatch)
+//   - 5 BEC/linkless features (financial request, authority, callback)
+//   - 5 attachment features (risky extensions, double ext, entropy)
+// Also provides buildUnifiedVector() which assembles all 64 features
+// from all tiers into the model-ready input vector.
+// ================================================================
 
 class FeatureExtractor {
   constructor() {
@@ -618,11 +692,18 @@ class FeatureExtractor {
   }
 }
 
-// -----------------------------------------------------------------
-// DnsChecker - Tier 2 DNS-over-HTTPS feature extraction
-// Uses public Cloudflare / Google DoH endpoints (no API keys).
-// Only domain names are sent; no email content leaves the device.
-// -----------------------------------------------------------------
+// ================================================================
+// BLOCK: DnsChecker Class — Tier 2 DNS-over-HTTPS Validation
+// Queries public DNS resolvers (Cloudflare 1.1.1.1, Google 8.8.8.8)
+// to validate sender and link domains. Extracts 5 DNS features:
+//   - DomainExists: whether the domain has any DNS records
+//   - MXRecordCount: number of mail exchange records
+//   - ARecordCount: number of IPv4 address records
+//   - RandomStringDomain: Shannon entropy heuristic for random names
+//   - HasMXRecord: binary flag for mail server presence
+// Only domain name strings are sent; no email content leaves device.
+// Results are cached in-memory with configurable TTL (default 10 min).
+// ================================================================
 
 class DnsChecker {
   constructor() {
@@ -754,11 +835,25 @@ class DnsChecker {
   }
 }
 
-// -----------------------------------------------------------------
-// PageAnalyzer - Tier 3 Deep Scan feature extraction
-// Parses an HTML Document (from DOMParser) and extracts 13 features.
-// No network calls - pure DOM traversal.
-// -----------------------------------------------------------------
+// ================================================================
+// BLOCK: PageAnalyzer Class — Tier 3 Deep Scan Page Analysis
+// Analyzes the HTML of linked pages (fetched by background.js) to
+// extract 13 page-structure features that detect phishing kits:
+//   - InsecureForms: forms with non-HTTPS action URLs
+//   - ExtFormAction: forms posting to external domains
+//   - AbnormalFormAction: blank, javascript:, or # form actions
+//   - PctExtHyperlinks: ratio of external hyperlinks
+//   - PctExtResourceUrls: ratio of external resource references
+//   - SubmitInfoToEmail: forms with mailto: actions
+//   - IframeOrFrame: presence of iframe/frame elements
+//   - MissingTitle: page lacks a <title> tag
+//   - ImagesOnlyInForm: forms with only images (no text inputs)
+//   - ExtFavicon: favicon loaded from external domain
+//   - EmbeddedBrandName: well-known brand names in page text
+//   - PctNullSelfRedirectHyperlinks: links pointing to self/#/empty
+//   - RelativeFormAction: forms with relative (non-absolute) actions
+// No network calls — pure DOM traversal on pre-fetched HTML.
+// ================================================================
 
 class PageAnalyzer {
   constructor() {

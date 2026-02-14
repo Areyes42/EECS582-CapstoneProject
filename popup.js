@@ -1,17 +1,70 @@
 // ═══════════════════════════════════════════════════════════════════
-// GoPhishFree – Fish Tank Dashboard (popup.js)
+// Code Artifact:   popup.js
+// Description:     Fish Tank Dashboard controller for the GoPhishFree
+//                  Chrome extension popup. Manages the animated
+//                  aquarium UI with SVG fish (4 types based on risk
+//                  tier), collection panel, recent catches, settings
+//                  toggles (Enhanced Scanning, AI Enhancement), trusted
+//                  domains manager, and ambient visual effects.
 //
-// Controls the animated fish tank popup and dashboard:
-//   • SVG fish generators (Friendly, Suspicious, Phishy Puffer, Shark)
-//   • FishEntity class with JS-driven swimming + CSS micro-animations
-//   • requestAnimationFrame loop for smooth movement
-//   • Fish collection panel with counts and locked/unlocked states
-//   • Recent catches list with clickable items
-//   • Bubble, particle, and caustic light effects
-//   • Enhanced Scanning toggle (Tier 2 DNS checks)
+// Programmers:     Ty Farrington, Brett Suhr, Andrew Reyes,
+//                  Nicholas Holmes, Kaleb Howard
+// Created:         2025-11-01
+// Revised:
+//   2025-11-20 — Initial popup structure and fish animation
+//                (Nicholas Holmes)
+//   2025-12-10 — SVG fish generators for all 4 types (Nicholas Holmes)
+//   2026-01-05 — Fish collection panel and recent catches
+//                (Kaleb Howard)
+//   2026-01-15 — Enhanced Scanning toggle (Brett Suhr)
+//   2026-02-01 — FishEntity refactor with JS-driven swimming,
+//                bubble/particle effects (Nicholas Holmes)
+//   2026-02-05 — Trusted Domains Manager UI with add/remove/render
+//                (Ty Farrington)
+//   2026-02-08 — AI Enhancement toggle and Configure AI modal
+//                (Ty Farrington, Kaleb Howard)
 //
-// Fish face RIGHT by default; scaleX(-1) flips them when swimming left.
-// Tail flutter, fin wave, and eye blink are CSS-driven for efficiency.
+// Preconditions:
+//   - Must be loaded by popup.html after DOM is ready
+//   - chrome.storage.local must be accessible
+//   - chrome.runtime messaging must be available
+//   - popup.html must contain expected DOM element IDs (tank, panels)
+//
+// Acceptable Input:
+//   - Fish collection data from chrome.storage.local
+//   - Scan history entries with { url, riskScore, fishType, timestamp }
+//   - User interactions: clicks, toggles, text input for domains
+//
+// Unacceptable Input:
+//   - popup.js should not be loaded outside the extension popup context
+//   - Invalid domain strings for trusted domains (validated before save)
+//
+// Postconditions:
+//   - Fish tank rendered with appropriate fish based on collection
+//   - Settings changes persisted to chrome.storage.local
+//   - Custom trusted/blocked domains saved and synced to content script
+//
+// Return Values:    N/A (event-driven UI controller; no exports)
+//
+// Error Handling:
+//   - Storage read failures: caught, UI shows empty defaults
+//   - Invalid domain input: silently ignored, input cleared
+//   - Missing DOM elements: null-checked before operations
+//
+// Side Effects:
+//   - Reads/writes chrome.storage.local (settings, domains, fish)
+//   - Modifies popup DOM (fish, panels, lists, toggles)
+//   - requestAnimationFrame loop runs while popup is open
+//   - Listens to chrome.storage.onChanged for real-time updates
+//
+// Invariants:
+//   - Fish always swim within tank boundaries (0 to tank width/height)
+//   - At most MAX_FISH (12) fish rendered simultaneously
+//   - Custom domain list stored as JSON arrays in chrome.storage.local
+//
+// Known Faults:
+//   - Popup closes when user clicks outside, losing animation state
+//   - Very large fish collections may cause brief rendering lag
 // ═══════════════════════════════════════════════════════════════════
 
 /* ═══════════════════════════════════════════════

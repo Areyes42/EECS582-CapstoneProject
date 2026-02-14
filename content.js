@@ -1,25 +1,89 @@
 // =====================================================================
-// GoPhishFree - Gmail Content Script (Unified Model)
+// Code Artifact:   content.js
+// Description:     Gmail Content Script — Core scanning engine for the
+//                  GoPhishFree Chrome extension. Injected into Gmail
+//                  pages to orchestrate the full email phishing-detection
+//                  lifecycle: email-open detection, feature extraction,
+//                  ML inference (calibrated Random Forest), risk badge
+//                  display, side-panel analysis, deep scan, trusted
+//                  domain logic, post-model intelligence, and optional
+//                  AI enhancement (BYOK).
 //
-// Core content script injected into Gmail. Handles the full
-// email scanning lifecycle:
+// Programmers:     Ty Farrington, Brett Suhr, Andrew Reyes,
+//                  Nicholas Holmes, Kaleb Howard
+// Created:         2025-10-15
+// Revised:
+//   2025-11-20 — Initial email detection & badge display (Ty Farrington)
+//   2025-12-10 — Feature extraction integration (Andrew Reyes)
+//   2026-01-05 — Random Forest inference in-browser (Ty Farrington)
+//   2026-01-15 — Deep Scan (Tier 3) page analysis (Brett Suhr)
+//   2026-01-25 — Fish Tank gamification integration (Nicholas Holmes)
+//   2026-02-01 — Unified 64-feature model + isotonic calibration
+//                (Ty Farrington)
+//   2026-02-05 — Trusted domain whitelist (500+), free email provider
+//                separation, post-model intelligence (BEC boosts,
+//                newsletter dampening) (Ty Farrington)
+//   2026-02-08 — AI Enhancement (BYOK) auto-trigger with gating logic,
+//                features-only payload, user-managed trusted domains
+//                (Ty Farrington, Kaleb Howard)
 //
-//   1. Detect email opens via URL monitoring and DOM mutations
-//   2. Extract email features (links, sender, text, attachments, BEC)
-//   3. Build 64-feature unified vector (email + DNS + page + BEC + flags)
-//   4. Run single calibrated Random Forest: riskScore = round(100 * prob)
-//   5. Display risk badge on email header + analysis side panel
-//   6. Deep Scan: fetch linked pages, fill page features, re-run model
-//   7. Report Phish: manual severity selection dialog
+// Preconditions:
+//   - Must be injected into a Gmail page (matches *://mail.google.com/*)
+//   - model/model_unified.json must exist and be loadable via fetch()
+//   - featureExtractor.js must be loaded before this script
+//   - chrome.storage.local and chrome.runtime must be available (MV3)
 //
-// All ML inference runs locally. No post-score point adding.
-// Score = round(100 * calibrated_probability) -- stable 0-100.
+// Acceptable Input:
+//   - Gmail DOM elements (email rows, message bodies, header elements)
+//   - Model JSON containing trees[], scaler, calibration, feature_names
+//   - User settings from chrome.storage.local (enhancedScanning, etc.)
+//
+// Unacceptable Input:
+//   - Non-Gmail pages (script will not activate — URL check fails)
+//   - Corrupted or missing model JSON (fallback: score defaults to 0)
+//
+// Postconditions:
+//   - Risk badge injected next to email subject/header
+//   - Side panel with analysis details available on badge click
+//   - Scan result persisted via background.js → chrome.storage.local
+//   - Fish collection updated based on risk tier
+//
+// Return Values:    N/A (IIFE — no exported return; side-effect-driven)
+//
+// Error Handling:
+//   - Model load failure: logged to console, scanning silently disabled
+//   - Feature extraction failure: caught per-email, badge shows error
+//   - AI call failure: "AI unavailable" shown, local score remains
+//   - DOM mutation errors: caught in observer callback, non-fatal
+//
+// Side Effects:
+//   - Modifies Gmail DOM (injects badges, panels, styles)
+//   - Writes to chrome.storage.local (scan history, fish collection)
+//   - Sends messages to background.js via chrome.runtime.sendMessage
+//   - May make network requests for DNS (Tier 2) and Deep Scan (Tier 3)
+//   - May call external AI APIs when BYOK is configured and gating passes
+//
+// Invariants:
+//   - riskScore is always an integer in [0, 100]
+//   - Feature vector is always exactly 64 elements
+//   - No email body/subject/sender ever sent to AI — only signal features
+//   - Trusted domain dampening never applies to free email providers
+//
+// Known Faults:
+//   - Gmail DOM structure changes may break element selectors
+//   - Very large emails (100+ links) may cause brief UI lag
+//   - Model accuracy limited by training data distribution
 // =====================================================================
 
 (function() {
   'use strict';
   
-  // -------------------- Fish Type Definitions ----------------------
+  // ================================================================
+  // BLOCK: Fish Type Definitions
+  // Maps risk score ranges to themed fish types used for gamification.
+  // Each fish type has an emoji, display name, description, and the
+  // min/max risk score thresholds that determine which fish is caught.
+  // ================================================================
   const FISH_TYPES = {
     friendly: {
       emoji: '\u{1F41F}',
@@ -51,9 +115,17 @@
     }
   };
   
-  // -------------------- Trusted Domain Whitelist --------------------
-  // 500+ well-known legitimate domains. Combined with user-managed
-  // custom domains stored in chrome.storage.local.
+  // ================================================================
+  // BLOCK: Trusted Domain Whitelist
+  // 500+ well-known legitimate corporate/organizational domains.
+  // These are domains where only employees can send email (e.g.,
+  // google.com, microsoft.com, bankofamerica.com). Free email
+  // providers (gmail.com, outlook.com, etc.) are NOT included here
+  // because anyone can register on those services. The whitelist is
+  // combined with user-managed custom domains from chrome.storage.
+  // When a sender's domain is in this set AND no BEC/attachment
+  // signals are detected, the risk score is capped at 30 (Low).
+  // ================================================================
   const TRUSTED_DOMAINS = new Set([
     // ── Big Tech & Platforms ──
     // NOTE: Free email providers (gmail.com, outlook.com, icloud.com, etc.)
@@ -744,9 +816,15 @@
     'better.com'
   ]);
 
-  // ── Free / Public Email Providers ──
-  // Anyone can register on these — they must NOT get trusted dampening.
-  // Phishing is commonly sent from free accounts on these providers.
+  // ================================================================
+  // BLOCK: Free / Public Email Providers
+  // Domains where anyone can register an account for free (gmail.com,
+  // outlook.com, icloud.com, yahoo.com, protonmail.com, etc.).
+  // These are explicitly excluded from trusted domain dampening
+  // because a phishing email from scammer@gmail.com should be
+  // scored on its own merits. The content script checks this set
+  // in runInference() to ensure free providers never get score caps.
+  // ================================================================
   const FREE_EMAIL_PROVIDERS = new Set([
     // Google
     'gmail.com', 'googlemail.com',
@@ -1213,7 +1291,15 @@
   }
   
   // ================================================================
-  //  Email Data Extraction from Gmail DOM
+  // BLOCK: Email Data Extraction from Gmail DOM
+  // Scrapes the currently open email in Gmail to extract:
+  //   - Sender name and email address
+  //   - All hyperlinks (href + display text)
+  //   - Full body text content
+  //   - Attachment filenames
+  //   - Reply-To address (if different from sender)
+  // Returns an object used by FeatureExtractor for feature derivation.
+  // Falls back gracefully if any DOM element is missing.
   // ================================================================
 
   function extractEmailData() {
@@ -1551,12 +1637,25 @@
   }
 
   // ================================================================
-  //  Calibrated Random Forest Prediction
+  // BLOCK: Calibrated Random Forest Prediction
+  // Performs in-browser ML inference using the model loaded from
+  // model/model_unified.json. Steps:
+  //   1. Z-score normalize the 64-element feature vector using
+  //      stored scaler_mean and scaler_scale arrays
+  //   2. Traverse all 200 decision trees, following split nodes
+  //      until reaching leaf nodes that contain class probabilities
+  //   3. Average leaf probabilities across all trees (soft vote)
+  //   4. Apply isotonic calibration via piecewise-linear interpolation
+  //      using x_values/y_values lookup table from training
+  //   5. Return calibrated probability in [0, 1] and derived confidence
   // ================================================================
 
   /**
    * Traverse the Random Forest, get raw soft-vote probability,
    * then apply the isotonic calibration mapping from the model JSON.
+   *
+   * @param {number[]} rawFeatures - 64-element feature vector
+   * @returns {{ probability: number, confidence: number }}
    */
   function predictWithCalibratedForest(rawFeatures) {
     const { scaler_mean, scaler_scale, trees, calibration } = modelData;
@@ -1733,12 +1832,29 @@
   }
 
   // ================================================================
-  //  AI Enhancement (Cloud BYOK)
+  // BLOCK: AI Enhancement (Cloud BYOK)
+  // Optional cloud-based second opinion using the user's own API key.
+  // Three main functions:
+  //   buildAiPayload()  — Constructs a features-only JSON package
+  //     containing signal scores (never raw email text/subject/sender)
+  //   shouldCallAi()    — Gating logic that determines if AI analysis
+  //     is worth the latency/cost (checks uncertain score range,
+  //     low confidence, BEC signals, risky attachments, etc.)
+  //   displayAiResult() — Renders the AI score, risk tier, top
+  //     signals, and agreement badge in the side panel UI
+  // The AI response must match a strict JSON schema; invalid
+  // responses are rejected and "AI unavailable" is shown.
   // ================================================================
 
   /**
    * Build a features-only payload for the AI provider.
    * No email body, subject, or sender address is ever sent.
+   *
+   * @param {Object} features - Email/URL features from FeatureExtractor
+   * @param {Object|null} dnsFeatures - DNS features (null if not run)
+   * @param {Object|null} pageFeatures - Page features (null if not run)
+   * @param {Object} localResult - { riskScore, confidence, reasons }
+   * @returns {Object} Features-only JSON payload for AI provider
    */
   function buildAiPayload(features, dnsFeatures, pageFeatures, localResult) {
     const f = features || {};

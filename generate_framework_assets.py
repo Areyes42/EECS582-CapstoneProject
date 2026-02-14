@@ -1,15 +1,59 @@
 """
-Generate Framework/ architecture diagram images and updated Architecture PDF
-for GoPhishFree - EECS582 Capstone Project
+=====================================================================
+Code Artifact:   generate_framework_assets.py
+Description:     Generates architecture diagram images (PNG) and an
+                 Architecture Document (PDF) for the GoPhishFree
+                 Framework/ folder. Produces 6 diagrams:
+                   1. System Architecture
+                   2. Risk Scoring Pipeline
+                   3. ML Model Architecture
+                   4. Email Scan Sequence Diagram
+                   5. Class Diagram
+                   6. AI Enhancement Flow (BYOK)
+                 Also generates a multi-page Architecture PDF with
+                 embedded images and detailed narrative sections.
 
-Generates high-quality diagrams matching the original visual style:
-  - Dark navy background (#0d1b2a)
-  - Neon colored borders with glow effects
-  - Detailed text inside boxes
-  - Professional UML-style layouts
+Programmers:     Ty Farrington
+Created:         2026-02-01
+Revised:
+  2026-02-01 — Initial diagram generation with matplotlib
+               (Ty Farrington)
+  2026-02-05 — Updated for post-model intelligence, free email
+               provider logic, and trusted domains (Ty Farrington)
+  2026-02-08 — PDF generation with fpdf2, isotonic calibration
+               details, AI Enhancement section (Ty Farrington)
 
-Requires: matplotlib, numpy, fpdf2
+Preconditions:
+  - Python 3.7+ with matplotlib, numpy, fpdf2 installed
+  - Framework/ directory exists or will be created
+
+Acceptable Input:   None (no arguments; runs all generators)
+Unacceptable Input: N/A
+
+Postconditions:
+  - 6 PNG files written to Framework/
+  - GoPhishFree_Architecture_Document.pdf written to Framework/
+  - PDF also copied to docs/Sprint1/ if that directory exists
+  - __pycache__ auto-cleaned after execution
+
+Return Values:    Exit code 0 on success; progress printed to stdout
+
+Error Handling:
+  - fpdf2 not installed: falls back to matplotlib-based PDF
+  - Missing image files: PDF sections skip image embed gracefully
+
+Side Effects:
+  - Creates/overwrites files in Framework/ directory
+  - Copies PDF to docs/Sprint1/ if available
+  - Removes __pycache__ directories after execution
+
+Invariants:       All diagrams use consistent color palette and style
+Known Faults:     matplotlib text rendering limited vs. professional
+                  design tools; some text may overlap at small sizes
+
+Requirements: matplotlib, numpy, fpdf2
   pip install matplotlib numpy fpdf2
+=====================================================================
 """
 
 import matplotlib

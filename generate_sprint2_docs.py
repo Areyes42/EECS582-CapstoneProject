@@ -1,9 +1,47 @@
 """
-Generate Sprint 2 Requirements and Artifacts as .docx (Word) files
-for GoPhishFree - EECS582 Capstone Project - Team 24
+=====================================================================
+Code Artifact:   generate_sprint2_docs.py
+Description:     Generates Sprint 2 Requirements and Artifacts as
+                 .docx (Word) files for the GoPhishFree EECS582
+                 Capstone Project (Team 24). Documents are written
+                 as sprint planning documents (goals and targets,
+                 not completed items) matching Sprint 1 formatting.
+                 Outputs:
+                   - docs/Sprint2/Sprint2_Requirements.docx
+                   - docs/Sprint2/Sprint2_Artifacts.docx
 
-Matches the formatting style of the Sprint 1 documents.
-Written as sprint planning documents (goals, not completed items).
+Programmers:     Ty Farrington
+Created:         2026-02-08
+Revised:
+  2026-02-08 — Initial generation with full feature set as planned
+               goals including unified model, AI enhancement, trusted
+               domains, and post-model intelligence (Ty Farrington)
+
+Preconditions:
+  - Python 3.7+ with python-docx installed (pip install python-docx)
+  - docs/ directory exists or will be created
+
+Acceptable Input:   None (no arguments required)
+Unacceptable Input: N/A
+
+Postconditions:
+  - Two .docx files created in docs/Sprint2/
+  - __pycache__ auto-cleaned after execution
+
+Return Values:    Exit code 0 on success; file paths printed to stdout
+
+Error Handling:
+  - python-docx not installed: ImportError (descriptive message)
+  - Directory creation: os.makedirs with exist_ok=True
+
+Side Effects:
+  - Creates docs/Sprint2/ directory if it doesn't exist
+  - Creates/overwrites .docx files in docs/Sprint2/
+  - Removes __pycache__ after execution
+
+Invariants:       Documents always use consistent formatting and team info
+Known Faults:     Word formatting may vary slightly across Office versions
+=====================================================================
 """
 
 from docx import Document
