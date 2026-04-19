@@ -82,7 +82,9 @@ export default function CTASection() {
             {/* Action buttons — primary Chrome Web Store link + secondary GitHub link */}
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
               <a
-                href="#"
+                href="https://chromewebstore.google.com/detail/gophishfree/gnbmikbkalibddfmgofkninipmiahdko"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{ display: "inline-flex", alignItems: "center", gap: "0.75rem", padding: "1rem 2.5rem", borderRadius: "0.75rem", background: "linear-gradient(to right, #14b8a6, #10b981)", color: "white", fontWeight: 600, fontSize: "1.125rem", textDecoration: "none", boxShadow: "0 10px 25px rgba(20,184,166,0.25)", transition: "transform 0.3s, box-shadow 0.3s" }}
                 onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 15px 35px rgba(20,184,166,0.4)"; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "0 10px 25px rgba(20,184,166,0.25)"; }}

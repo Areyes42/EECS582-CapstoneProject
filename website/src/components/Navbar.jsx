@@ -178,7 +178,9 @@ export default function Navbar() {
           {/* ── Desktop Call-to-Action Button ── */}
           <div className="hidden md:!block">
             <a
-              href="#"
+              href="https://chromewebstore.google.com/detail/gophishfree/gnbmikbkalibddfmgofkninipmiahdko"
+              target="_blank"
+              rel="noopener noreferrer"
               style={{ display: "inline-flex", alignItems: "center", gap: "0.625rem", padding: "0.875rem 1.75rem", borderRadius: "0.625rem", background: "linear-gradient(to right, #14b8a6, #10b981)", color: "white", fontSize: "1.125rem", fontWeight: 600, textDecoration: "none", transition: "transform 0.3s, box-shadow 0.3s" }}
               onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 10px 20px rgba(20,184,166,0.25)"; }}
               onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "none"; }}
@@ -227,7 +229,7 @@ export default function Navbar() {
                   {link.label}
                 </a>
               ))}
-              <a href="#" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginTop: "0.5rem", padding: "0.75rem 1.25rem", borderRadius: "0.5rem", background: "linear-gradient(to right, #14b8a6, #10b981)", color: "white", fontWeight: 600, textDecoration: "none" }}>
+              <a href="https://chromewebstore.google.com/detail/gophishfree/gnbmikbkalibddfmgofkninipmiahdko" target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginTop: "0.5rem", padding: "0.75rem 1.25rem", borderRadius: "0.5rem", background: "linear-gradient(to right, #14b8a6, #10b981)", color: "white", fontWeight: 600, textDecoration: "none" }}>
                 <Download size={16} />
                 Add to Chrome
               </a>
